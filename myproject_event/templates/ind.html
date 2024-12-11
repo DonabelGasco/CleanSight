@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLOv8 Webcam Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        header {
+            background: #007bff;
+            color: white;
+            padding: 20px 10px;
+            margin-bottom: 20px;
+        }
+        video, canvas, img {
+            width: 80%;
+            max-width: 400px;
+            margin: 10px auto;
+            display: block;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            color: white;
+            background: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #loader {
+            display: none;
+            margin: 20px auto;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        #downloadBtn {
+            display: none;
+            background: #28a745;
+        }
+        #downloadBtn:hover {
+            background: #1e7e34;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>YOLOv8 Webcam Detection</h1>
+    </header>
+    <button id="toggleWebcamBtn">Turn Webcam Off</button>
+    <video id="webcam" autoplay></video>
+    <canvas id="captureCanvas" style="display: none;"></canvas>
+    <button id="captureBtn">Capture and Detect</button>
+    <div id="loader">
+        <p>Processing... Please wait.</p>
+    </div>
+    <div id="result">
+        <h2>Result</h2>
+        <img id="outputImage" alt="Detection result will appear here">
+        <br>
+        <button id="downloadBtn">Download Result</button>
+    </div>
+    <script>
+        const video = document.getElementById("webcam");
+        const canvas = document.getElementById("captureCanvas");
+        const captureBtn = document.getElementById("captureBtn");
+        const outputImage = document.getElementById("outputImage");
+        const loader = document.getElementById("loader");
+        const downloadBtn = document.getElementById("downloadBtn");
+        const toggleWebcamBtn = document.getElementById("toggleWebcamBtn");
+
+        let webcamActive = true;
+
+        // Start webcam
+        function startWebcam() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then((stream) => {
+                    video.srcObject = stream;
+                    webcamActive = true;
+                    toggleWebcamBtn.textContent = "Turn Webcam Off";
+                })
+                .catch((err) => {
+                    console.error("Error accessing webcam:", err);
+                    alert("Unable to access webcam. Please check your permissions.");
+                });
+        }
+        startWebcam();
+
+        // Toggle webcam
+        toggleWebcamBtn.addEventListener("click", () => {
+            if (webcamActive) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                webcamActive = false;
+                toggleWebcamBtn.textContent = "Turn Webcam On";
+            } else {
+                startWebcam();
+            }
+        });
+
+        // Capture image and send to server
+        captureBtn.addEventListener("click", async () => {
+            loader.style.display = "block";
+            const context = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Get base64 image data
+            const imageData = canvas.toDataURL("image/jpeg");
+
+            // Send image data to server
+            try {
+                const response = await fetch("/capture", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: imageData }),
+                });
+
+                const data = await response.json();
+                loader.style.display = "none";
+
+                if (data.output) {
+                    // Display detected image
+                    outputImage.src = `${data.output}?timestamp=${new Date().getTime()}`;
+                    outputImage.style.display = "block";
+                    downloadBtn.style.display = "inline-block";
+
+                    // Set download link
+                    downloadBtn.onclick = () => {
+                        const a = document.createElement("a");
+                        a.href = data.output;
+                        a.download = "detection_result.jpg";
+                        a.click();
+                    };
+                } else {
+                    alert("Error processing image. Please try again.");
+                }
+            } catch (err) {
+                console.error("Error:", err);
+                loader.style.display = "none";
+                alert("Error communicating with the server. Please check the server logs.");
+            }
+        });
+    </script>
+</body>
+</html>
